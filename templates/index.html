@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Medical Cost Predictor</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<div class="header">
+    <div class="header-inner">
+        <div class="logo">💊 Medical Cost Predictor</div>
+        <div class="subtitle">Regression Pipeline · Feature Importance · Model Comparison</div>
+    </div>
+</div>
+
+<div class="container">
+
+    <div class="stats-row">
+        <div class="stat-card"><div class="stat-label">Dataset Size</div><div class="stat-val">{{ results.dataset_size }} records</div></div>
+        <div class="stat-card"><div class="stat-label">Avg Cost</div><div class="stat-val">${{ "{:,.0f}".format(results.avg_cost) }}</div></div>
+        <div class="stat-card"><div class="stat-label">Smoker Avg</div><div class="stat-val red">${{ "{:,.0f}".format(results.smoker_mean) }}</div></div>
+        <div class="stat-card"><div class="stat-label">Non-Smoker Avg</div><div class="stat-val green">${{ "{:,.0f}".format(results.non_smoker_mean) }}</div></div>
+    </div>
+
+    <!-- Key insight -->
+    <div class="insight-banner">
+        💡 Smokers pay on average <strong>${{ "{:,.0f}".format(results.smoker_mean - results.non_smoker_mean) }} more</strong> per year than non-smokers
+    </div>
+
+    <!-- Model comparison -->
+    <div class="card">
+        <h2>Model Comparison</h2>
+        <table>
+            <thead>
+                <tr><th>Model</th><th>R² Score</th><th>MAE</th><th>RMSE</th></tr>
+            </thead>
+            <tbody>
+                {% for r in results.model_results %}
+                <tr class="{{ 'best-row' if r.model == results.best_model }}">
+                    <td>{{ r.model }}{% if r.model == results.best_model %} ⭐{% endif %}</td>
+                    <td>{{ r.r2 }}%</td>
+                    <td>${{ "{:,.0f}".format(r.mae) }}</td>
+                    <td>${{ "{:,.0f}".format(r.rmse) }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Feature importance -->
+    <div class="card">
+        <h2>What Drives Medical Costs? (Feature Importance)</h2>
+        {% for feat, score in results.feature_importance %}
+        <div class="feat-row">
+            <div class="feat-name">{{ feat }}</div>
+            <div class="feat-bar-wrap">
+                <div class="feat-bar" style="width: {{ (score * 100 / results.feature_importance[0][1]) | round(1) }}%"></div>
+            </div>
+            <div class="feat-score">{{ "%.3f"|format(score) }}</div>
+        </div>
+        {% endfor %}
+    </div>
+
+    <!-- Prediction form -->
+    <div class="card">
+        <h2>Estimate Your Medical Cost</h2>
+        <div class="form-grid">
+            <div class="form-group">
+                <label>Age</label>
+                <input type="number" id="age" value="35" min="18" max="100">
+            </div>
+            <div class="form-group">
+                <label>Sex</label>
+                <select id="sex">
+                    <option value="male">Male</option>
+                    <option value="female">Female</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>BMI</label>
+                <input type="number" id="bmi" value="27.5" step="0.1" min="10" max="60">
+            </div>
+            <div class="form-group">
+                <label>Number of Children</label>
+                <input type="number" id="children" value="1" min="0" max="10">
+            </div>
+            <div class="form-group">
+                <label>Smoker</label>
+                <select id="smoker">
+                    <option value="no">No</option>
+                    <option value="yes">Yes</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Region</label>
+                <select id="region">
+                    <option value="northeast">Northeast</option>
+                    <option value="northwest">Northwest</option>
+                    <option value="southeast">Southeast</option>
+                    <option value="southwest">Southwest</option>
+                </select>
+            </div>
+        </div>
+        <button onclick="predict()">Estimate Cost</button>
+        <div id="result-box" style="display:none;"></div>
+    </div>
+
+</div>
+
+<script>
+async function predict() {
+    const data = {
+        age: document.getElementById("age").value,
+        sex: document.getElementById("sex").value,
+        bmi: document.getElementById("bmi").value,
+        children: document.getElementById("children").value,
+        smoker: document.getElementById("smoker").value,
+        region: document.getElementById("region").value
+    };
+
+    const res = await fetch("/predict", { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify(data) });
+    const r = await res.json();
+    if (r.error) { alert(r.error); return; }
+
+    const box = document.getElementById("result-box");
+    const riskClass = r.risk_level === "High" ? "result-positive" : r.risk_level === "Medium" ? "result-medium" : "result-negative";
+    box.className = "result-box " + riskClass;
+    box.innerHTML = `
+        <div class="result-label">${r.formatted}</div>
+        <div class="result-prob">Estimated Annual Medical Cost</div>
+        <div class="result-risk">Cost Level: <strong>${r.risk_level}</strong>
+        ${r.smoker_impact ? '<span class="smoker-warn"> — Smoking significantly increases this estimate</span>' : ''}</div>
+    `;
+    box.style.display = "block";
+}
+</script>
+</body>
+</html>
